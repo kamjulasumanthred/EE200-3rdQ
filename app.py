@@ -599,11 +599,18 @@ with tab_ident:
                     
                     # Highlight winning bin
                     ax_proof.bar([best_offset], [max_matches], width=np.diff(bins_hist)[0]*3, color='orange')
+                    
+                    # Calculate dynamic text shift based on offset range to avoid overlap
+                    min_offset = np.min(offsets) if len(offsets) > 0 else 0
+                    max_offset = np.max(offsets) if len(offsets) > 0 else 1000
+                    x_range = max(max_offset - min_offset, 1)
+                    x_shift = x_range * 0.04  # 4% of total range
+                    
                     ax_proof.annotate(f"{max_matches} hashes\nalign here", 
                                       xy=(best_offset, max_matches), 
-                                      xytext=(best_offset + 100, max_matches * 0.8),
+                                      xytext=(best_offset + x_shift, max_matches * 0.85),
                                       arrowprops=dict(facecolor='orange', shrink=0.05, width=1, headwidth=6),
-                                      color='orange', fontweight='bold')
+                                      color='orange', fontweight='bold', fontsize=10)
                                       
                     ax_proof.set_title(f"Time Offset Alignment Histogram for '{pred_song}'", color='white')
                     ax_proof.set_xlabel("time offset (database frame - query frame)", color='white')
