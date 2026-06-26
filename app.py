@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import zipfile
 import io
+import time
 from audio_fingerprinter import (
     compute_spectrogram,
     get_peaks,
@@ -198,6 +199,76 @@ st.markdown("""
         background-color: #00c8d6;
         color: #0d0f14;
     }
+    
+    /* Metrics panel styling */
+    .metrics-panel {
+        background-color: #11131a;
+        border: 1px solid #1f232d;
+        border-radius: 6px;
+        padding: 16px;
+        margin-bottom: 20px;
+    }
+    .metrics-header {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #5d6475;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        margin-bottom: 15px;
+    }
+    .metric-col {
+        text-align: center;
+        border-right: 1px solid #1f232d;
+    }
+    .metric-col:last-child {
+        border-right: none;
+    }
+    .metric-name {
+        font-size: 0.65rem;
+        color: #5d6475;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+    }
+    .metric-val {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #ffffff;
+    }
+    .metric-detail {
+        font-size: 0.7rem;
+        color: #00ff66;
+        margin-top: 2px;
+    }
+    
+    /* Match found panel */
+    .match-found-panel {
+        background-color: rgba(0, 255, 102, 0.03);
+        border: 1px solid rgba(0, 255, 102, 0.3);
+        border-radius: 6px;
+        padding: 20px;
+        margin-bottom: 25px;
+    }
+    .match-found-status {
+        font-size: 0.65rem;
+        font-weight: 700;
+        color: #00ff66;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+    }
+    .match-found-title {
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: #ffffff;
+        margin-bottom: 8px;
+    }
+    .match-found-desc {
+        font-size: 0.85rem;
+        color: #888e9b;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -267,7 +338,6 @@ with tab_lib:
             # Display thumbnail image
             thumb_path = f"thumbnails/{song_name}.png"
             if os.path.exists(thumb_path):
-                # Put the image inside the card area using Streamlit columns/spacing hacks
                 st.image(thumb_path, use_column_width=True)
             else:
                 st.write("*Thumbnail missing*")
@@ -289,7 +359,6 @@ with tab_ident:
     samples_dir = "samples"
     sample_files = [f"sample{i}.mp3" for i in range(1, 6)]
     
-    # Mapping for sample descriptions (like in Screenshot 5 of uploader)
     sample_labels = {
         "sample1.mp3": "sample1",
         "sample2.mp3": "sample2",
@@ -310,9 +379,8 @@ with tab_ident:
                 if st.button("Try", key=f"btn_{s_file}"):
                     st.session_state.selected_sample = s_path
                     st.session_state.run_identification = True
-                    uploaded_file = None # Clear uploader
+                    uploaded_file = None 
 
-    # Add a spacer
     st.write("")
     
     # Identification trigger
@@ -323,7 +391,6 @@ with tab_ident:
     elif st.session_state.selected_sample is not None and st.session_state.run_identification:
         query_audio_path = st.session_state.selected_sample
         identify_clicked = True
-        # Reset trigger so it doesn't re-run infinitely on page loads
         st.session_state.run_identification = False
     else:
         identify_clicked = False
@@ -331,27 +398,123 @@ with tab_ident:
     if identify_clicked and query_audio_path is not None:
         with st.spinner("Analyzing and searching signatures..."):
             try:
-                # Load query audio
+                # Time Spectrogram computation
+                t_start_all = time.time()
+                
+                t0 = time.time()
                 if isinstance(query_audio_path, str):
-                    # It's a path
                     y, sr = librosa.load(query_audio_path, sr=DEFAULT_FS)
                 else:
-                    # It's an uploaded file object
                     y, sr = librosa.load(io.BytesIO(query_audio_path.read()), sr=DEFAULT_FS)
-                    
-                # Compute Spectrogram
                 stft_q = librosa.stft(y, n_fft=1024, hop_length=256)
                 spec_db = librosa.amplitude_to_db(np.abs(stft_q), ref=np.max)
+                t_spec = int((time.time() - t0) * 1000)
                 
-                # Extract peaks and hashes
+                # Time Constellation
+                t0 = time.time()
                 peaks = get_peaks(spec_db)
-                hashes = generate_hashes(peaks)
+                t_const = int((time.time() - t0) * 1000)
                 
-                # Match
+                # Time Hashing
+                t0 = time.time()
+                hashes = generate_hashes(peaks)
+                t_hash = int((time.time() - t0) * 1000)
+                
+                # Time DB Lookup
+                t0 = time.time()
                 pred_song, max_matches, offset_histograms, alignment_scores = match_query(hashes, cached_db)
+                t_lookup = int((time.time() - t0) * 1000)
+                
+                # Time Scoring
+                t0 = time.time()
+                # Find best offset
+                best_offset = 0
+                if pred_song and pred_song in offset_histograms:
+                    offsets_arr = np.array(offset_histograms[pred_song])
+                    unique_offsets, counts = np.unique(offsets_arr, return_counts=True)
+                    best_offset = unique_offsets[np.argmax(counts)]
+                t_score = int((time.time() - t0) * 1000)
+                
+                t_total = int((time.time() - t_start_all) * 1000)
                 
                 if pred_song:
-                    # ----------------- STEP 1 -----------------
+                    # 1. Performance Metrics Panel
+                    st.markdown(f"""
+                    <div class="metrics-panel">
+                        <div class="metrics-header">
+                            <div>Performance Metrics</div>
+                            <div style="color: #00ff66; font-weight: 700;">total {t_total} ms</div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <div class="metric-col" style="flex: 1;">
+                                <div class="metric-name">1. Spectrogram</div>
+                                <div class="metric-val">{t_spec} ms</div>
+                                <div class="metric-detail">{spec_db.shape[0]}x{spec_db.shape[1]}</div>
+                            </div>
+                            <div class="metric-col" style="flex: 1;">
+                                <div class="metric-name">2. Constellation</div>
+                                <div class="metric-val">{t_const} ms</div>
+                                <div class="metric-detail">{len(peaks)} peaks</div>
+                            </div>
+                            <div class="metric-col" style="flex: 1;">
+                                <div class="metric-name">3. Hashing</div>
+                                <div class="metric-val">{t_hash} ms</div>
+                                <div class="metric-detail">{len(hashes):,} hashes</div>
+                            </div>
+                            <div class="metric-col" style="flex: 1;">
+                                <div class="metric-name">4. DB Lookup</div>
+                                <div class="metric-val">{t_lookup} ms</div>
+                                <div class="metric-detail">{len(cached_db.song_list)} tracks</div>
+                            </div>
+                            <div class="metric-col" style="flex: 1;">
+                                <div class="metric-name">5. Scoring</div>
+                                <div class="metric-val">{t_score} ms</div>
+                                <div class="metric-detail">offset {best_offset}</div>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Calculate runner-up ratio
+                    sorted_candidates = sorted(alignment_scores.items(), key=lambda x: x[1], reverse=True)
+                    if len(sorted_candidates) > 1:
+                        runner_up_name, runner_up_score = sorted_candidates[1]
+                        ratio = max_matches / max(runner_up_score, 1)
+                        ratio_text = f" • <b>{ratio:.1f}x</b> the runner-up"
+                    else:
+                        ratio_text = ""
+                        
+                    # 2. Match Found Panel
+                    st.markdown(f"""
+                    <div class="match-found-panel">
+                        <div class="match-found-status">Match Found</div>
+                        <div class="match-found-title">{pred_song}</div>
+                        <div class="match-found-desc">cluster score <b>{max_matches}</b>{ratio_text}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # 3. Candidate Scores list
+                    st.write("##### CANDIDATE SCORES")
+                    top_candidates = sorted_candidates[:5]
+                    max_score_all = top_candidates[0][1]
+                    
+                    for c_name, c_score in top_candidates:
+                        pct = (c_score / max_score_all) * 100
+                        # CSS-styled progress row
+                        st.markdown(f"""
+                        <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                            <div style="width: 250px; text-align: left; color: #ffffff; font-size: 0.9rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{c_name}</div>
+                            <div style="flex-grow: 1; margin: 0 20px; background-color: #11131a; border-radius: 4px; height: 6px; position: relative;">
+                                <div style="background-color: #00f0ff; width: {pct}%; height: 100%; border-radius: 4px;"></div>
+                                <div style="background-color: #00f0ff; width: 6px; height: 6px; border-radius: 50%; position: absolute; left: calc({pct}% - 3px); top: 0px; box-shadow: 0 0 8px #00f0ff;"></div>
+                            </div>
+                            <div style="width: 50px; text-align: right; color: #ffffff; font-weight: 600; font-size: 0.9rem;">{c_score}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                    st.write("---")
+                    
+                    # ----------------- STEP 1 (Visualizations) -----------------
                     st.markdown("<div class='step-header'>Step 1 • Peak Extraction</div>", unsafe_allow_html=True)
                     st.markdown(f"<div class='step-title'>Spectrogram & Peaks</div>", unsafe_allow_html=True)
                     
@@ -388,7 +551,7 @@ with tab_ident:
                     st.markdown("<div class='step-header'>Step 2 • Database Search</div>", unsafe_allow_html=True)
                     st.markdown(f"<div class='step-title'>Where in the song?</div>", unsafe_allow_html=True)
                     
-                    # Reconstruct constellation of the matched song from database
+                    # Reconstruct constellation of matched song
                     song_peaks = []
                     for hash_key, entries in cached_db.db.items():
                         f1, f2, dt = hash_key
@@ -396,13 +559,6 @@ with tab_ident:
                             if song_name == pred_song:
                                 song_peaks.append((t1, f1))
                     song_peaks = list(set(song_peaks))
-                    
-                    # Find the alignment offset (mode)
-                    offsets = offset_histograms.get(pred_song, [])
-                    offsets_arr = np.array(offsets)
-                    unique_offsets, counts = np.unique(offsets_arr, return_counts=True)
-                    max_idx = np.argmax(counts)
-                    peak_offset = unique_offsets[max_idx]
                     
                     # Frame duration of query
                     query_duration_frames = spec_db.shape[1]
@@ -417,7 +573,7 @@ with tab_ident:
                     ax_search.scatter(t_song, f_song, color='#3c4250', s=1, alpha=0.6)
                     
                     # Draw highlight window
-                    ax_search.axvspan(peak_offset, peak_offset + query_duration_frames, color='orange', alpha=0.3)
+                    ax_search.axvspan(best_offset, best_offset + query_duration_frames, color='orange', alpha=0.3)
                     ax_search.set_title(f"Full Constellation of '{pred_song}' with Match Window Highlighted (orange)", color='white')
                     ax_search.set_xlabel("time (frames)", color='white')
                     ax_search.set_ylabel("freq bin", color='white')
@@ -437,14 +593,15 @@ with tab_ident:
                     ax_proof.set_facecolor('#0d0f14')
                     
                     # Plot alignment histogram
+                    offsets = offset_histograms.get(pred_song, [])
                     counts_hist, bins_hist = np.histogram(offsets, bins=100)
                     ax_proof.bar(bins_hist[:-1], counts_hist, width=np.diff(bins_hist), color='#3c4250', alpha=0.7)
                     
-                    # Highlight the winning bin
-                    ax_proof.bar([peak_offset], [max_matches], width=np.diff(bins_hist)[0]*3, color='orange')
+                    # Highlight winning bin
+                    ax_proof.bar([best_offset], [max_matches], width=np.diff(bins_hist)[0]*3, color='orange')
                     ax_proof.annotate(f"{max_matches} hashes\nalign here", 
-                                      xy=(peak_offset, max_matches), 
-                                      xytext=(peak_offset + 100, max_matches * 0.8),
+                                      xy=(best_offset, max_matches), 
+                                      xytext=(best_offset + 100, max_matches * 0.8),
                                       arrowprops=dict(facecolor='orange', shrink=0.05, width=1, headwidth=6),
                                       color='orange', fontweight='bold')
                                       
@@ -462,7 +619,7 @@ with tab_ident:
             except Exception as e:
                 st.error(f"Error processing audio: {e}")
                 
-        # Clear selected state so it doesn't run again on reload
+        # Clear selected state
         st.session_state.selected_sample = None
 
 # ----------------- BATCH TAB -----------------
@@ -485,7 +642,6 @@ with tab_batch:
             for idx, f in enumerate(uploaded_batch_files):
                 status_text.text(f"Processing ({idx+1}/{len(uploaded_batch_files)}): {f.name}")
                 try:
-                    # Load audio
                     y, sr = librosa.load(io.BytesIO(f.read()), sr=DEFAULT_FS)
                     stft_q = librosa.stft(y, n_fft=1024, hop_length=256)
                     spec_db = librosa.amplitude_to_db(np.abs(stft_q), ref=np.max)
@@ -494,8 +650,6 @@ with tab_batch:
                     
                     pred_song, max_matches, _, _ = match_query(hashes, cached_db)
                     
-                    # The demo video shows "none" if it doesn't clear the confidence threshold.
-                    # We can set a confidence threshold of, e.g., 5 aligned hashes.
                     if not pred_song or max_matches < 5:
                         pred_song = "none"
                         
@@ -510,15 +664,11 @@ with tab_batch:
             # Create DataFrame
             df = pd.DataFrame(results)
             
-            # Show table exactly like in the screenshot
             st.write("### RESULTS")
             st.write(f"{len(results)}/{len(results)} clips matched to a track.")
             
-            # Display custom table
             st.dataframe(df, use_container_width=True)
             
-            # CSV Download
-            # Rename columns to matches requirements: filename, prediction
             df_export = df.rename(columns={"FILE": "filename", "PREDICTION": "prediction"})
             csv_data = df_export.to_csv(index=False)
             st.download_button(
