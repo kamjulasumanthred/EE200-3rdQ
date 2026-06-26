@@ -1,0 +1,10 @@
+EE200_course_project_data_2026/
+project_data.zip
+download_data.py
+download_single.py
+download_all_missing.py
+list_gdrive.py
+build_q3_notebook.py
+.git/
+__pycache__/
+*.pkl.tmp
