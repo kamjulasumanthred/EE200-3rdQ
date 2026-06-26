@@ -2,7 +2,15 @@
 ## Course Project Report — Q3: Sonic Signatures & Signals to Softwares
 
 **Topic:** Audio Fingerprinting and Interactive Retrieval System ('Magical Mystery Tune' & 'Zapptain America')  
-**Date:** June 26, 2026
+**Date:** June 26, 2026  
+
+**Submitted By:**
+- **K. Sumanth Reddy** (Roll No. 240510)
+- **Lella Sushanth** (Roll No. 240595)
+
+**Links:**
+- **Live Deployed App:** [https://ee200-3rdq-hdmusyd23ieyrznjw26bch.streamlit.app](https://ee200-3rdq-hdmusyd23ieyrznjw26bch.streamlit.app)
+- **Source Code Repository:** [https://github.com/kamjulasumanthred/EE200-3rdQ](https://github.com/kamjulasumanthred/EE200-3rdQ)
 
 ---
 
